@@ -1,145 +1,255 @@
---1. Tạo database
-CREATE DATABASE DETHI
-GO
+-- Câu hỏi SQL từ cơ bản đến nâng cao, bao gồm trigger
 
-SET DATEFORMAT DMY;
-USE QuanLyDuocPham
-GO
-USE DETHI;
-CREATE TABLE NHACUNGCAP
+-- Cơ bản:
+-- 1. Liệt kê tất cả chuyên gia trong cơ sở dữ liệu.
+select * from dbo.ChuyenGia;
+
+-- 2. Hiển thị tên và email của các chuyên gia nữ.
+select HoTen, Email from dbo.ChuyenGia
+where GioiTinh = N'Nữ';
+
+-- 3. Liệt kê các công ty có trên 100 nhân viên.
+select * from dbo.CongTy
+where SoNhanVien > 100;
+
+-- 4. Hiển thị tên và ngày bắt đầu của các dự án trong năm 2023.
+select TenDuAn, NgayBatDau from dbo.DuAn
+where NgayBatDau >= '2023-01-01' and NgayBatDau <= '2023-12-31';
+
+-- Trung cấp:
+-- 6. Liệt kê tên chuyên gia và số lượng dự án họ tham gia.
+select HoTen, count(MaDuAn) as SoLuongDuAn from dbo.ChuyenGia
+join dbo.ChuyenGia_DuAn CGDA on ChuyenGia.MaChuyenGia = CGDA.MaChuyenGia
+group by HoTen;
+
+-- 7. Tìm các dự án có sự tham gia của chuyên gia có kỹ năng 'Python' cấp độ 4 trở lên.
+select TenDuAn, HoTen from dbo.DuAn
+join dbo.ChuyenGia_DuAn CGDA on DuAn.MaDuAn = CGDA.MaDuAn
+join dbo.ChuyenGia CG on CG.MaChuyenGia = CGDA.MaChuyenGia
+join dbo.ChuyenGia_KyNang CGKN on CG.MaChuyenGia = CGKN.MaChuyenGia
+join dbo.KyNang KN on KN.MaKyNang = CGKN.MaKyNang
+where TenKyNang = 'Python' and CapDo >= 4;
+
+-- 8. Hiển thị tên công ty và số lượng dự án đang thực hiện.
+select TenCongTy, count(MaDuAn) as SoLuongDuAn from dbo.CongTy
+join dbo.DuAn DA on CongTy.MaCongTy = DA.MaCongTy
+group by TenCongTy;
+
+-- 9. Tìm chuyên gia có số năm kinh nghiệm cao nhất trong mỗi chuyên ngành.
+select ChuyenNganh, CG1.MaChuyenGia, HoTen
+from dbo.ChuyenGia CG1
+where CG1.MaChuyenGia in (
+    select top 1 with ties CG2.MachuyenGia
+    from dbo.ChuyenGia CG2
+    where CG2.ChuyenNganh = CG1.ChuyenNganh
+    order by NamKinhNghiem
+    )
+
+-- 10. Liệt kê các cặp chuyên gia đã từng làm việc cùng nhau trong ít nhất một dự án.
+select distinct
+    CG1.MaChuyenGia AS ChuyenGia1,
+    CG2.MaChuyenGia AS ChuyenGia2,
+    DA.TenDuAn
+FROM ChuyenGia_DuAn CG1
+JOIN ChuyenGia_DuAn CG2 ON CG1.MaDuAn = CG2.MaDuAn AND CG1.MaChuyenGia < CG2.MaChuyenGia
+JOIN DuAn DA ON CG1.MaDuAn = DA.MaDuAn;
+
+
+-- Nâng cao:
+-- 11. Tính tổng thời gian (theo ngày) mà mỗi chuyên gia đã tham gia vào các dự án.
+SELECT
+    cg.MaChuyenGia,
+    cg.HoTen,
+    SUM(DATEDIFF(DAY, cd.NgayThamGia, ISNULL(da.NgayKetThuc, GETDATE()))) AS TongThoiGianThamGia
+FROM
+    ChuyenGia_DuAn cd
+JOIN
+    ChuyenGia cg ON cd.MaChuyenGia = cg.MaChuyenGia
+JOIN
+    DuAn da ON cd.MaDuAn = da.MaDuAn
+GROUP BY
+    cg.MaChuyenGia, cg.HoTen
+ORDER BY
+    TongThoiGianThamGia DESC;
+
+-- 12. Tìm các công ty có tỷ lệ dự án hoàn thành cao nhất (trên 90%).
+SELECT MaCongTy
+FROM dbo.DuAn
+GROUP BY MaCongTy
+HAVING (COUNT(CASE WHEN TrangThai = N'Hoàn thành' THEN 1 END) * 100.0 / COUNT(*)) > 90;
+
+-- 13. Liệt kê top 3 kỹ năng được yêu cầu nhiều nhất trong các dự án.
+    SELECT TOP 3
+    kn.TenKyNang,
+    COUNT(*) AS SoLanDuocYeuCau
+FROM
+    ChuyenGia_KyNang ck
+JOIN
+    KyNang kn ON ck.MaKyNang = kn.MaKyNang
+GROUP BY
+    kn.TenKyNang
+ORDER BY
+    SoLanDuocYeuCau DESC;
+
+
+-- 14. Tính lương trung bình của chuyên gia theo từng cấp độ kinh nghiệm (Junior: 0-2 năm, Middle: 3-5 năm, Senior: >5 năm).
+SELECT
+    CASE
+        WHEN NamKinhNghiem BETWEEN 0 AND 2 THEN 'Junior'
+        WHEN NamKinhNghiem BETWEEN 3 AND 5 THEN 'Middle'
+        WHEN NamKinhNghiem > 5 THEN 'Senior'
+    END AS CapDoKinhNghiem,
+    AVG(Luong) AS LuongTrungBinh
+FROM dbo.ChuyenGia
+GROUP BY
+    CASE
+        WHEN NamKinhNghiem BETWEEN 0 AND 2 THEN 'Junior'
+        WHEN NamKinhNghiem BETWEEN 3 AND 5 THEN 'Middle'
+        WHEN NamKinhNghiem > 5 THEN 'Senior'
+    END;
+
+-- 15. Tìm các dự án có sự tham gia của chuyên gia từ tất cả các chuyên ngành.
+SELECT TenDuAn
+FROM DuAn
+JOIN ChuyenGia_DuAn ON DuAn.MaDuAn = ChuyenGia_DuAn.MaDuAn
+JOIN ChuyenGia ON ChuyenGia_DuAn.MaChuyenGia = ChuyenGia.MaChuyenGia
+GROUP BY DuAn.MaDuAn, DuAn.TenDuAn
+HAVING COUNT(DISTINCT ChuyenGia.ChuyenNganh) = (SELECT COUNT(DISTINCT ChuyenNganh) FROM ChuyenGia);
+
+
+-- Trigger:
+-- 16. Tạo một trigger để tự động cập nhật số lượng dự án của công ty khi thêm hoặc xóa dự án.
+create table dbo.SoLuongDuAnCongTy
 (
-    MANCC CHAR(5) PRIMARY KEY NOT NULL,
-    TENNCC VARCHAR(25),
-    QUOCGIA VARCHAR(25),
-    LOAINCC VARCHAR(25)
+    MaCongTy    int
+        constraint PK_MaCongTy
+            primary key
+        constraint FK_MaCongTy_CongTy
+            references dbo.CongTy,
+    SoLuongDuAn int
 )
+CREATE TRIGGER trg_SoLuongDuAnUpdate
+ON dbo.DuAn
+AFTER INSERT, DELETE
+AS
+BEGIN
+    -- Cập nhật số lượng dự án khi thêm mới
+    IF EXISTS (SELECT 1 FROM INSERTED)
+    BEGIN
+        MERGE INTO dbo.SoLuongDuAnCongTy AS Target
+        USING (SELECT MaCongTy, COUNT(*) AS SoLuong FROM INSERTED GROUP BY MaCongTy) AS Source
+        ON Target.MaCongTy = Source.MaCongTy
+        WHEN MATCHED THEN
+            UPDATE SET SoLuongDuAn = SoLuongDuAn + Source.SoLuong
+        WHEN NOT MATCHED THEN
+            INSERT (MaCongTy, SoLuongDuAn) VALUES (Source.MaCongTy, Source.SoLuong);
+    END;
 
-CREATE TABLE DUOCPHAM
-(
-    MADP CHAR(4) PRIMARY KEY NOT NULL ,
-    TENDP VARCHAR(25),
-    LOAIDP VARCHAR(25),
-    GIA INT
-)
+    -- Cập nhật số lượng dự án khi xóa
+    IF EXISTS (SELECT 1 FROM DELETED)
+    BEGIN
+        UPDATE dbo.SoLuongDuAnCongTy
+        SET SoLuongDuAn = SoLuongDuAn - (
+            SELECT COUNT(*)
+            FROM DELETED
+            WHERE dbo.SoLuongDuAnCongTy.MaCongTy = DELETED.MaCongTy
+        )
+        WHERE EXISTS (
+            SELECT 1
+            FROM DELETED
+            WHERE dbo.SoLuongDuAnCongTy.MaCongTy = DELETED.MaCongTy
+        );
 
-CREATE TABLE PHIEUNHAP
-(
-    SOPN CHAR(5) PRIMARY KEY NOT NULL ,
-    NGNHAP SMALLDATETIME,
-    MANCC CHAR(5),
-    LOAINHAP VARCHAR(25),
-    CONSTRAINT FK_PHIEUNHAP_NHACUNGCAP FOREIGN KEY (MANCC) REFERENCES NHACUNGCAP(MANCC)
-)
-
-CREATE TABLE CTPN
-(
-    SOPN CHAR(5),
-    MADP CHAR(4),
-    SOLUONG INT,
-    CONSTRAINT FK_CTPN_PHIEUNHAP FOREIGN KEY (SOPN) REFERENCES PHIEUNHAP(SOPN),
-    CONSTRAINT FK_CTPN_DUOCPHAM FOREIGN KEY (MADP) REFERENCES DUOCPHAM(MADP),
-    PRIMARY KEY (SOPN, MADP)
-)
+        -- Xóa công ty nếu không còn dự án nào
+        DELETE FROM dbo.SoLuongDuAnCongTy
+        WHERE SoLuongDuAn <= 0;
+    END;
+END;
 GO
 
--- 2.Nhập dữ liệu cho 4 table như đề bài
-INSERT INTO  NHACUNGCAP(MANCC, TENNCC, QUOCGIA, LOAINCC) VALUES ('NCC01',N'Phuc Hung',N'Viet Nam', N'Thuong xuyen')
-INSERT INTO  NHACUNGCAP(MANCC, TENNCC, QUOCGIA, LOAINCC) VALUES ('NCC02',N'J. B. Pharmaceuticals',N'India', N'Vang lai')
-INSERT INTO  NHACUNGCAP(MANCC, TENNCC, QUOCGIA, LOAINCC) VALUES ('NCC03',N'Sapharco',N'Singapore', N'Vang lai')
+-- 17. Tạo một trigger để ghi log mỗi khi có sự thay đổi trong bảng ChuyenGia.
+CREATE TABLE ChuyenGia_Log (
+    MaChuyenGia INT,
+    ThoiGian DATETIME DEFAULT GETDATE()
+);
+GO
 
-INSERT INTO DUOCPHAM(MADP, TENDP, LOAIDP, GIA) VALUES ('DP01',N'Thuoc ho PH', N'Siro', 120000)
-INSERT INTO DUOCPHAM(MADP, TENDP, LOAIDP, GIA) VALUES ('DP02',N'Zecuf Herbal CouchRemedy', N'Vien nen', 200000)
-INSERT INTO DUOCPHAM(MADP, TENDP, LOAIDP, GIA) VALUES ('DP03',N'Cotrim', N'Vien sui', 80000)
+CREATE TRIGGER trg_LogChuyenGia
+ON ChuyenGia
+AFTER INSERT, UPDATE, DELETE
+AS
+BEGIN
+    -- Ghi log cho INSERT và UPDATE
+    IF EXISTS (SELECT 1 FROM INSERTED)
+    BEGIN
+        INSERT INTO ChuyenGia_Log (MaChuyenGia, ThoiGian)
+        SELECT MaChuyenGia, GETDATE()
+        FROM INSERTED;
+    END;
 
-INSERT INTO PHIEUNHAP(SOPN, NGNHAP, MANCC, LOAINHAP) VALUES ('00001', '22/11/2017', 'NCC01', 'Noi dia')
-INSERT INTO PHIEUNHAP(SOPN, NGNHAP, MANCC, LOAINHAP) VALUES ('00002', '04/12/2017', 'NCC03', 'Nhap khau')
-INSERT INTO PHIEUNHAP(SOPN, NGNHAP, MANCC, LOAINHAP) VALUES ('00003', '10/12/2017', 'NCC02', 'Nhap khau')
+    -- Ghi log cho DELETE
+    IF EXISTS (SELECT 1 FROM DELETED)
+    BEGIN
+        INSERT INTO ChuyenGia_Log (MaChuyenGia, ThoiGian)
+        SELECT MaChuyenGia, GETDATE()
+        FROM DELETED;
+    END;
+END;
+GO
 
-INSERT INTO CTPN(SOPN, MADP, SOLUONG) VALUES ('00001', 'DP01', 100)
-INSERT INTO CTPN(SOPN, MADP, SOLUONG) VALUES ('00001', 'DP02', 200)
-INSERT INTO CTPN(SOPN, MADP, SOLUONG) VALUES ('00003', 'DP03', 543)
+-- 18. Tạo một trigger để đảm bảo rằng một chuyên gia không thể tham gia vào quá 5 dự án cùng một lúc.
+CREATE TRIGGER trg_LimitProjectsPerExpert
+ON ChuyenGia_DuAn
+AFTER INSERT
+AS
+BEGIN
+    IF EXISTS (
+        SELECT MaChuyenGia
+        FROM ChuyenGia_DuAn
+        GROUP BY MaChuyenGia
+        HAVING COUNT(*) > 5
+    )
+    BEGIN
+        RAISERROR (N'Một chuyên gia không thể tham gia quá 5 dự án cùng một lúc.', 16, 1);
+        ROLLBACK TRANSACTION;
+    END;
+END;
+GO
+
+-- 19. Tạo một trigger để tự động cập nhật trạng thái của dự án thành 'Hoàn thành' khi tất cả chuyên gia đã kết thúc công việc.
+CREATE TRIGGER trg_UpdateTrangThaiHoanThanh
+ON ChuyenGia_DuAn
+AFTER UPDATE
+AS
+BEGIN
+    -- Cập nhật trạng thái dự án thành 'Hoàn thành' khi tất cả chuyên gia đã kết thúc công việc
+    UPDATE DuAn
+    SET TrangThai = N'Hoàn thành'
+    WHERE MaDuAn IN (
+        SELECT cgd.MaDuAn
+        FROM ChuyenGia_DuAn cgd
+        JOIN DuAn d ON cgd.MaDuAn = d.MaDuAn
+        GROUP BY cgd.MaDuAn
+        HAVING COUNT(*) = SUM(CASE WHEN d.TrangThai = N'Đã kết thúc' THEN 1 ELSE 0 END)
+    )
+    AND TrangThai != N'Hoàn thành';
+END;
 GO
 
 
-
--- 3. Tất cả các dược phẩm có loại là Siro đều có giá lớn hơn 100.000
-ALTER TABLE DUOCPHAM
-ADD CONSTRAINT CK_Gia_Siro
-CHECK ((LOAIDP <> N'Siro') OR (GIA > 100000))
-GO
--- 4. Phiếu nhập của những nhà cung cấp ở những quốc gia khác Việt Nam đều có loại nhập là Nhập khẩu.
-DROP TRIGGER IF EXISTS trg_CheckPhieuNhap
-GO
-
-CREATE TRIGGER trg_CheckPhieuNhap
-ON PHIEUNHAP
+-- 20. Tạo một trigger để tự động tính toán và cập nhật điểm đánh giá trung bình của công ty dựa trên điểm đánh giá của các dự án.
+ALTER TABLE DuAn ADD DiemDanhGia FLOAT;
+ALTER TABLE CongTy ADD DiemDanhGiaTrungBinh FLOAT;
+CREATE TRIGGER trg_CapNhatDiemCongTy
+ON DuAn
 AFTER INSERT, UPDATE
 AS
 BEGIN
-    -- Check phiếu nhập của những nh cung cấp khác Việt Nam đều có loại nhập là Nhập khẩu
-    IF EXISTS(
-        SELECT 1
-        FROM inserted i
-        JOIN NHACUNGCAP NCC ON i.MANCC = NCC.MANCC
-        WHERE NCC.QUOCGIA <> N'Viet Nam'
-        AND i.LOAINHAP <> N'Nhap khau'
+    UPDATE CongTy
+    SET DiemDanhGiaTrungBinh = (
+        SELECT AVG(DiemDanhGia)
+        FROM DuAn
+        WHERE DuAn.MaCongTy = CongTy.MaCongTy
     )
-    --
-    BEGIN
-    RAISERROR(N'Phiếu nhập của những nhà cung cấp ở các quốc gia khác Việt Nam đều có loại nhập là Nhập khẩu', 16, 1);
-    ROLLBACK TRANSACTION;
-    END
-END
-GO
-
--- 5.
-SELECT *
-FROM PHIEUNHAP
-WHERE ((NGNHAP >= '01/12/2017') AND  (NGNHAP <= '31/12/2017'))
-ORDER BY NGNHAP ASC
-GO
-
--- 6.
-SELECT TOP 1 MADP
-FROM CTPN
-JOIN PHIEUNHAP P on CTPN.SOPN = P.SOPN
-WHERE YEAR(NGNHAP) = 2017
-ORDER BY SOLUONG DESC
-GO
-
---7
-SELECT DISTINCT DP.*
-FROM DUOCPHAM DP
-JOIN CTPN C on DP.MADP = C.MADP
-JOIN PHIEUNHAP P on P.SOPN = C.SOPN
-JOIN NHACUNGCAP N on N.MANCC = P.MANCC
-WHERE N.LOAINCC = N'Thuong xuyen'
-AND DP.MADP NOT IN (
-    SELECT CTPN_SUB.MADP
-    FROM CTPN CTPN_SUB
-    JOIN PHIEUNHAP PN_SUB ON PN_SUB.SOPN = CTPN_SUB.SOPN
-    JOIN NHACUNGCAP NCC_SUB ON NCC_SUB.MANCC = PN_SUB.MANCC
-    WHERE NCC_SUB.LOAINCC = N'Vang lai'
-    );
-GO
-
---8
-SELECT N.MANCC, N.TENNCC
-FROM NHACUNGCAP N
-WHERE NOT EXISTS (
-    -- Tìm dược phẩm có giá > 100,000đ trong năm 2017
-    SELECT DP.MADP
-    FROM DUOCPHAM DP
-    JOIN CTPN C ON DP.MADP = C.MADP
-    JOIN PHIEUNHAP P ON P.SOPN = C.SOPN
-    WHERE DP.GIA > 100000
-    AND YEAR(P.NGNHAP) = 2017
-    AND NOT EXISTS (
-        -- Kiểm tra xem nhà cung cấp có cung cấp dược phẩm này không
-        SELECT 1
-        FROM CTPN C2
-        JOIN PHIEUNHAP P2 ON P2.SOPN = C2.SOPN
-        WHERE C2.MADP = DP.MADP
-        AND P2.MANCC = N.MANCC
-    )
-)
+    WHERE MaCongTy IN (SELECT DISTINCT MaCongTy FROM inserted);
+END;
